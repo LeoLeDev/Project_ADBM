@@ -132,5 +132,90 @@ CREATE INDEX idx_pod_productid_orderqty ON purchaseorderdetail(productid, orderq
 /* Question I */
 -- uses the previous indexes we created --
 
+/* Question J */
+CREATE TABLE Transaction_History (
+    purchaseorderid INTEGER NOT NULL,
+    purchaseorderdetailid INTEGER NOT NULL,
+    duedate TIMESTAMP,
+    orderqty NUMBER,
+    productid NUMBER,
+    unitprice DECIMAL(12,6),
+    receivedqty NUMBER,
+    rejectedqty NUMBER,
+    modifieddate TIMESTAMP,
+    CONSTRAINT fk_transaction_history FOREIGN KEY (purchaseorderid, purchaseorderdetailid) 
+        REFERENCES purchaseorderdetail(purchaseorderid, purchaseorderdetailid),
+    CONSTRAINT pk_transaction_history PRIMARY KEY (purchaseorderid, purchaseorderdetailid)
+);
+
+
+CREATE OR REPLACE TRIGGER trg_before_update_purchaseorderdetail
+BEFORE UPDATE ON PurchaseOrderDetail
+FOR EACH ROW
+BEGIN
+    INSERT INTO Transaction_History
+    VALUES (
+        :OLD.purchaseorderid,
+        :OLD.purchaseorderdetailid,
+        :OLD.duedate,
+        :OLD.orderqty,
+        :OLD.productid,
+        :OLD.unitprice,
+        :OLD.receivedqty,
+        :OLD.rejectedqty,
+        :OLD.modifieddate
+    );
+
+    :NEW.modifieddate := SYSTIMESTAMP;
+
+    UPDATE purchaseorderheader
+    SET subtotal = subtotal + (:NEW.unitprice * :NEW.orderqty) - (:OLD.unitprice * :OLD.orderqty)
+    WHERE purchaseorderid = :NEW.purchaseorderid;
+END;
+/
+-- TO CHECK IF TRIGGER WORKS PROPERLY
+select * from purchaseorderdetail WHERE purchaseorderdetailid=1;
+select * from purchaseorderheader WHERE purchaseorderid=1;
+select * from Transaction_History;
+UPDATE purchaseorderdetail
+SET unitprice =50.00
+WHERE purchaseorderid=1 ;
+select * from purchaseorderdetail WHERE purchaseorderdetailid=1;
+select * from purchaseorderheader WHERE purchaseorderid=1;
+select * from Transaction_History;
+
+/* Question K */
+
+CREATE OR REPLACE TRIGGER before_update_purchaseorderheader
+BEFORE UPDATE ON purchaseorderheader
+FOR EACH ROW
+DECLARE
+    total_prices NUMBER;
+BEGIN
+    SELECT SUM(orderqty * unitprice)
+    INTO total_prices
+    FROM purchaseorderdetail
+    WHERE purchaseorderid = :NEW.purchaseorderid;
+
+    IF :NEW.subtotal != total_prices THEN
+        RAISE_APPLICATION_ERROR(-20001, 'Data in the purchaseorderdetail table is not consistent with the new subtotal value ');
+    END IF;
+END;
+/
+-- TO CHECK IF TRIGGER WORKS PROPERLY
+SELECT * FROM PURCHASEORDERHEADER
+WHERE PURCHASEORDERID=1;
+
+UPDATE PurchaseOrderHeader
+SET SubTotal = 200
+WHERE purchaseorderid = 1;
+
+UPDATE PurchaseOrderHeader
+SET SubTotal = 210
+WHERE purchaseorderid = 1;
+
+SELECT * FROM PURCHASEORDERHEADER
+WHERE PURCHASEORDERID=1;
+
 
 
